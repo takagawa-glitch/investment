@@ -44,8 +44,8 @@ jobs:
           restore-keys: meigara-data-
 
       - name: ページを作る
-        # 株探は GitHub からの取得を拒否する(405)ため、株価・業績は IR BANK から取る
-        run: python build_site.py --list 銘柄リスト.txt --out site --source irbank
+        # 株探(405)・IR BANK(403)は GitHub からの取得を拒否するため、EDINET だけで作る(株価なし)
+        run: python build_site.py --list 銘柄リスト.txt --out site --source edinet
 
       - uses: actions/upload-pages-artifact@v3
         with:

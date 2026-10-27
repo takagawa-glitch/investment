@@ -622,5 +622,61 @@ class TestIrbankMarket(unittest.TestCase):
         self.assertTrue(any("403" in n for n in r.notes))
 
 
+
+# ------------------------------------------------------------ EDINET の経営指標(スマホ版。架空)
+
+def srow(el, label, value, ctx="CurrentYearDuration", rel="当期", pt="期間"):
+    return [f"jpcrp_cor:{el}", f"{label}、経営指標等", ctx, rel, "その他", pt, "JPY", "円", value]
+
+
+class TestEdinetSummary(unittest.TestCase):
+    def test_consolidated_preferred(self):
+        rows = [HEAD,
+                srow("NetSalesSummaryOfBusinessResults", "売上高", "5000000000"),
+                srow("NetSalesSummaryOfBusinessResults", "売上高", "999", ctx="CurrentYearDuration_NonConsolidatedMember"),
+                srow("NetSalesSummaryOfBusinessResults", "売上高", "888", ctx="Prior1YearDuration", rel="前期"),
+                srow("EquityToAssetRatioSummaryOfBusinessResults", "自己資本比率", "0.456",
+                     ctx="CurrentYearInstant", rel="当期末", pt="時点"),
+                srow("NetCashProvidedByUsedInOperatingActivitiesSummaryOfBusinessResults",
+                     "営業活動によるキャッシュ・フロー", "850000000")]
+        s = edinet.compute_summary(rows)
+        self.assertEqual((s["basis"], s["sales"], s["operating_cf"]), ("連結", "5000000000", "850000000"))
+        self.assertEqual(Decimal(s["equity_ratio"]), Decimal("45.6"))
+
+    def test_non_consolidated_and_operating_revenue(self):
+        nc = "CurrentYearDuration_NonConsolidatedMember"
+        rows = [HEAD, srow("OperatingRevenue1SummaryOfBusinessResults", "営業収益", "700", ctx=nc)]
+        s = edinet.compute_summary(rows)
+        self.assertEqual((s["basis"], s["sales"], s["sales_label"]), ("個別", "700", "営業収益"))
+        self.assertNotIn("equity_ratio", s)
+
+    def test_service_edinet_mode(self):
+        book = codes.CodeBook(codes.parse_codelist(CODELIST))
+        d = edinet.compute_debt([HEAD, row("jppfs_cor:Assets", "資産", "1"),
+                                 row("jppfs_cor:ShortTermLoansPayable", "短期借入金", "120000000")])
+        d.summary = {"basis": "連結", "v": edinet.SUMMARY_VERSION, "sales": "5000000000",
+                     "equity_ratio": "45.6", "operating_cf": "850000000"}
+        d.doc_type, d.period_end = "有価証券報告書", "2026-03-31"
+        with mock.patch.object(edinet, "find_latest_report", lambda *a, **k: {"docID": "S1"}),                 mock.patch.object(edinet, "fetch_debt", lambda doc, key: d):
+            r = service.get_stock("9999", book, "xxxx", source="edinet")
+        self.assertEqual(r.status, "成功")
+        k = r.kabutan
+        self.assertEqual((k.source, k.sales_actual.value, k.sales_actual.label), ("EDINET", Decimal("5000"), "2026/03 通期"))
+        self.assertEqual((k.equity_ratio.value, k.operating_cf.value), (Decimal("45.6"), Decimal("850")))
+        self.assertIsNone(r.psr_actual)
+        self.assertEqual(report.debt_cell(r), "120")
+        from meigara import web
+        page = web.render_page([r], "2026-10-27 15:50")
+        self.assertIn("売上高", page)
+        self.assertNotIn(">株価<", page)
+        self.assertIn("スマホ版では取得していません", report.detail_text(r))
+
+    def test_service_edinet_no_key(self):
+        book = codes.CodeBook(codes.parse_codelist(CODELIST))
+        r = service.get_stock("9999", book, None, source="edinet")
+        self.assertEqual(r.status, "失敗")
+        self.assertTrue(any("APIキー" in n for n in r.notes))
+
+
 if __name__ == "__main__":
     unittest.main()

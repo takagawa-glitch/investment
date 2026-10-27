@@ -46,8 +46,55 @@ def resolve(query, book):
     return None, None, found, f"候補が{len(found)}件あります。銘柄コードで入力し直してください"
 
 
+def _from_edinet(res, code, edinet_code, api_key, progress, cancelled):
+    """EDINET の最新の有報・半期報告書から、売上高・自己資本比率・営業CF・有利子負債を取る。
+    取れたら KabutanData の形で返し、res.debt も入れる。取れなければ None。"""
+    if not api_key:
+        res.notes.append("EDINET の APIキーが未設定です")
+        return None
+    if not edinet_code:
+        res.notes.append("EDINET の会社一覧にこの銘柄がありません")
+        return None
+    try:
+        doc = edinet.find_latest_report(
+            edinet_code, api_key,
+            progress=(lambda s: progress(f"{code}: {s}")) if progress else None,
+            cancelled=cancelled)
+        if doc is None:
+            res.notes.append("EDINET に最近の報告書が見つかりませんでした")
+            return None
+        d = edinet.fetch_debt(doc, api_key)
+    except edinet.EdinetError as e:
+        res.notes.append(f"EDINET: {e}")
+        return None
+    res.debt = d
+    res.notes.extend("有利子負債: " + n for n in d.notes)
+    s = d.summary or {}
+    kind = "中間期" if d.doc_type == "半期報告書" else ("四半期" if d.doc_type == "四半期報告書" else "通期")
+    label = f"{d.period_end[:7].replace('-', '/')} {kind}" if d.period_end else kind
+    k = kabutan.KabutanData(code=code, name=res.name, source="EDINET", price_note="")
+
+    def million(v):
+        return (Decimal(v) / Decimal(1_000_000)).quantize(Decimal(1), ROUND_HALF_UP)
+
+    if "sales" in s:
+        k.sales_actual = kabutan.Period(label, million(s["sales"]))
+    else:
+        k.warnings.append("EDINET: 売上高が見つかりません")
+    if "equity_ratio" in s:
+        k.equity_ratio = kabutan.Period(label, Decimal(s["equity_ratio"]).quantize(Decimal("0.1"), ROUND_HALF_UP))
+    else:
+        k.warnings.append("EDINET: 自己資本比率が見つかりません")
+    if "operating_cf" in s:
+        k.operating_cf = kabutan.Period(label, million(s["operating_cf"]))
+    elif kind == "通期":
+        k.warnings.append("EDINET: 営業CF が見つかりません")
+    return k
+
+
 def get_stock(query, book, api_key, progress=None, cancelled=None, source="kabutan") -> StockResult:
-    """source: 株価・業績の取得元。"kabutan"(PC。株探)/"irbank"(GitHub。株探が使えないため)"""
+    """source: 株価・業績の取得元。
+    "kabutan"(PC。株探)/"irbank"(IR BANK)/"edinet"(GitHub。EDINET だけ。株価なし)"""
     res = StockResult(query=query)
     company, code, cands, msg = resolve(query, book)
     if code is None:
@@ -61,7 +108,11 @@ def get_stock(query, book, api_key, progress=None, cancelled=None, source="kabut
     list_html = None   # IR BANK の財務状況ページ(取得済みなら有利子負債で使い回す)
 
     k = None
-    if source == "irbank":
+    if source == "edinet":
+        # GitHub 版: 株探・IR BANK はクラウドからの取得を拒否するため、EDINET だけで作る。
+        # 株価・時価総額・PSR は出さない(ユーザーの判断 2026-10-27: 検索すれば分かる)
+        k = _from_edinet(res, code, edinet_code, api_key, progress, cancelled)
+    elif source == "irbank":
         try:
             k, list_html = irbank.fetch_market(
                 code, edinet_code, res.name,
@@ -93,7 +144,7 @@ def get_stock(query, book, api_key, progress=None, cancelled=None, source="kabut
     #   順番: EDINET(APIキーがあるとき)→ IR BANK の貸借対照表を足し算 → 株探の倍率から概算 → 「－」
     if cancelled and cancelled():
         raise edinet.Cancelled()
-    if api_key and edinet_code:
+    if res.debt is None and api_key and edinet_code and source != "edinet":
         try:
             doc = edinet.find_latest_report(
                 company.edinet_code, api_key,
@@ -108,7 +159,7 @@ def get_stock(query, book, api_key, progress=None, cancelled=None, source="kabut
                 res.notes.extend("有利子負債: " + n for n in res.debt.notes)
         except edinet.EdinetError as e:
             res.notes.append(f"有利子負債: {e}")
-    if res.debt is None and edinet_code:
+    if res.debt is None and edinet_code and source != "edinet":   # GitHub からは IR BANK も使えない
         if cancelled and cancelled():
             raise edinet.Cancelled()
         try:

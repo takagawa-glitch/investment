@@ -164,6 +164,8 @@ class DebtResult:
     period_end: str = ""
     submitted: str = ""
     source: str = "EDINET"         # EDINET / IR BANK
+    # 主要な経営指標など(EDINET のときだけ): {"sales": 円, "equity_ratio": %, "operating_cf": 円, "basis": 連結/個別}
+    summary: dict = field(default_factory=dict)
 
     @property
     def total(self):
@@ -305,6 +307,65 @@ def compute_debt(rows) -> DebtResult:
     return res
 
 
+# 「主要な経営指標等の推移」の項目(jpcrp_cor:...SummaryOfBusinessResults)から、売上高・自己資本比率・営業CF を取る。
+# 業種や会計基準で項目名が違うため、科目名で探す(上にあるものを優先)。
+SUMMARY_VERSION = 2   # 読み取り方を変えたら上げる(保存した古い結果を使わず取り直す)
+_SALES_LABELS = ("売上高", "売上収益", "営業収益", "営業収入", "経常収益", "収益", "純収益", "売上高及び営業収入")
+_EQUITY_RE = re.compile(r"^(自己資本比率|親会社所有者帰属持分比率)")
+_OPCF_RE = re.compile(r"^営業活動による.*キャッシュ・フロー")
+
+
+def compute_summary(rows):
+    """XBRL→CSV の行から {"sales": 円, "equity_ratio": %, "operating_cf": 円, "basis": 連結/個別} を作る。
+    見つからない項目は入れない。値は JSON に保存するため文字で持つ。"""
+    header, body = rows[0], rows[1:]
+    c_el = _col(header, "要素ID", 0)
+    c_label = _col(header, "項目名", 1)
+    c_ctx = _col(header, "コンテキストID", 2)
+    c_rel = _col(header, "相対年度", 3)
+    c_pt = _col(header, "期間", 5)
+    c_val = _col(header, "値", 8)
+    need = max(c_el, c_label, c_ctx, c_rel, c_pt, c_val)
+
+    cand = []
+    for r in body:
+        if len(r) <= need or not r[c_el].endswith("SummaryOfBusinessResults"):
+            continue
+        if not r[c_rel].strip().startswith("当"):
+            continue
+        members = [p for p in r[c_ctx].split("_")[1:] if p]
+        if any(m != "NonConsolidatedMember" for m in members):
+            continue
+        val = _dec(r[c_val])
+        if val is None:
+            continue
+        label = unicodedata.normalize("NFKC", r[c_label]).strip()
+        label = re.sub(r"、経営指標等$", "", label).strip()       # 「売上高、経営指標等」→「売上高」
+        label = re.sub(r"[((][^))]*[))]$", "", label).strip()   # 「売上高(千円)」などの末尾を除く
+        # 経営指標の「連結・個別」列は「その他」になるため、コンテキストIDで見分ける
+        cons = "個別" if "NonConsolidatedMember" in members else "連結"
+        cand.append((label, cons, r[c_pt].strip(), val))
+    if not cand:
+        return {}
+    basis = "連結" if any(c[1] == "連結" for c in cand) else "個別"
+    cand = [c for c in cand if c[1] == basis]
+    out = {"basis": basis, "v": SUMMARY_VERSION}
+    for want in _SALES_LABELS:
+        hit = [c for c in cand if c[0] == want and c[2] == "期間"]
+        if hit:
+            out["sales"] = str(hit[0][3])
+            out["sales_label"] = want
+            break
+    hit = [c for c in cand if _EQUITY_RE.match(c[0]) and c[2] == "時点"]
+    if hit:
+        v = hit[0][3]
+        out["equity_ratio"] = str(v * 100 if abs(v) <= Decimal("1.5") else v)   # 0.595 → 59.5%
+    hit = [c for c in cand if _OPCF_RE.match(c[0]) and c[2] == "期間"]
+    if hit:
+        out["operating_cf"] = str(hit[0][3])
+    return out
+
+
 def _debt_cache_file(doc_id):
     return paths.cache_dir() / "edinet_debt" / f"{doc_id}.json"
 
@@ -319,7 +380,8 @@ def fetch_debt(doc, key) -> DebtResult:
             d = json.loads(f.read_text(encoding="utf-8"))
             d["items"] = [DebtItem(**i) for i in d.get("items", [])]
             d["lease_items"] = [DebtItem(**i) for i in d.get("lease_items", [])]
-            res = DebtResult(**d)
+            ok = (d.get("summary") or {}).get("v") == SUMMARY_VERSION
+            res = DebtResult(**d) if ok else None   # 古い形式は取り直す
         except (OSError, ValueError, TypeError):
             res = None
     if res is None:
@@ -337,6 +399,7 @@ def fetch_debt(doc, key) -> DebtResult:
                 raise EdinetError("書類の CSV に財務の数値が入っていませんでした")
             rows = _read_tsv(z.read(main[0]))
         res = compute_debt(rows)
+        res.summary = compute_summary(rows)
         res.doc_id = doc_id
         res.doc_type = DOC_TYPES.get(doc.get("docTypeCode"), "")
         res.doc_description = doc.get("docDescription") or ""

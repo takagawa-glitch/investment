@@ -32,7 +32,10 @@ investment/
 
 - リポジトリ: https://github.com/takagawa-glitch/investment (**公開**。ユーザーが公開でよいと判断 2026-10-27)
 - `build_site.py` が `銘柄リスト.txt` を読み、`site/index.html`(`meigara/web.py`)を作る。
-- **株探は GitHub のサーバーからの取得を拒否する(応答コード 405。2026-10-27 確認)。** 拒否をすり抜ける工夫はしない(規約の「運営を妨げる行為」に当たるおそれ)。GitHub では `--source irbank` で、株価・業績を IR BANK から取る(`irbank.fetch_market`: 銘柄ページ・財務状況・業績・CF の4ページ。財務状況ページは有利子負債でも使い回す)。株価は終値、売上高・CF は概数。PC 版は株探のまま。
+- **株探(405)・IR BANK(403)は GitHub のサーバーからの取得を拒否する(2026-10-27 確認)。** 拒否をすり抜ける工夫はしない(規約の「運営を妨げる行為」に当たるおそれ)。Google 検索結果の自動取得も規約違反なのでしない。
+- GitHub では `--source edinet`(`service._from_edinet`): EDINET の最新の有報・半期報告書から、売上高・自己資本比率・営業CF(`edinet.compute_summary`: 「主要な経営指標等の推移」の項目)と有利子負債を出す。株価・時価総額・PSR は出さない(ユーザー判断: 検索すれば分かる)。
+- `compute_summary` の読み方を変えたら `SUMMARY_VERSION` を上げる(保存した古い結果を使わない)。経営指標の「連結・個別」列は「その他」になるので、コンテキストIDの NonConsolidatedMember で見分ける。
+- `--source irbank`(IR BANK から株価・業績)も残してあるが、GitHub からは使えない。PC で試すとき用。
 - `.github/workflows/update.yml`: 平日 12:05・15:50 JST、`銘柄リスト.txt` 等の push、手動実行で動き、Pages に公開。
 - APIキーは GitHub の Secrets `EDINET_API_KEY`。キャッシュは `MEIGARA_DATA_DIR` を actions/cache で引き継ぐ。
 - 1回の上限は50銘柄(`MAX_STOCKS`)。株探への負担を増やす変更(回数・銘柄数を増やす)はユーザーに確認する。

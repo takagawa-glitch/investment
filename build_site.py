@@ -33,8 +33,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="銘柄情報のページを作る")
     ap.add_argument("--list", default="銘柄リスト.txt", help="銘柄リストのファイル")
     ap.add_argument("--out", default="site", help="ページを書き出すフォルダ")
-    ap.add_argument("--source", default="kabutan", choices=["kabutan", "irbank"],
-                    help="株価・業績の取得元(GitHub では株探が使えないため irbank)")
+    ap.add_argument("--source", default="kabutan", choices=["kabutan", "irbank", "edinet"],
+                    help="株価・業績の取得元(GitHub では株探・IR BANK が使えないため edinet)")
     args = ap.parse_args(argv)
 
     queries = read_list(args.list)

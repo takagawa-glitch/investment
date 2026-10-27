@@ -78,7 +78,15 @@ def detail_text(r):
         title += f"({k.market})"
     lines.append(f"■ {title}  結果: {r.status}")
 
-    if k:
+    edinet_only = bool(k and k.source == "EDINET")
+    if k and edinet_only:
+        # スマホ版(EDINET だけ): 株価・時価総額・PSR は出さない
+        if k.sales_actual:
+            lines.append(f"売上高: {fmt(k.sales_actual.value)}百万円({k.sales_actual.label}/EDINET)")
+        else:
+            lines.append("売上高: 取得できません")
+        lines.append("株価・時価総額・PSR: スマホ版では取得していません(PC版で確認できます)")
+    elif k:
         lines.append(f"株価: {fmt(k.price)}円({_time_text(k.price_time)} 時点・{k.price_note}/{k.source})")
         lines.append(f"時価総額: {fmt(k.market_cap)}億円({k.source})")
         for label, psr, sales in (("実績", r.psr_actual, k.sales_actual),
@@ -88,6 +96,7 @@ def detail_text(r):
                              f"売上高 {fmt(sales.value)}百万円({sales.label}期 {label})")
             else:
                 lines.append(f"PSR({label}): 計算できません(売上高が取得できません)")
+    if k:
         if k.equity_ratio:
             s = f"自己資本比率: {fmt(k.equity_ratio.value)}%({k.equity_ratio.label} 時点/{k.source})"
             a = k.equity_ratio_annual
@@ -96,7 +105,9 @@ def detail_text(r):
             lines.append(s)
         else:
             lines.append("自己資本比率: 取得できません")
-        if k.operating_cf:
+        if k.operating_cf and edinet_only:
+            lines.append(f"営業CF: {fmt(k.operating_cf.value)}百万円({k.operating_cf.label}/EDINET)")
+        elif k.operating_cf:
             lines.append(f"営業CF: {fmt(k.operating_cf.value)}百万円({k.operating_cf.label}期 通期/{k.source})")
         else:
             lines.append("営業CF: 取得できません")

@@ -45,14 +45,24 @@ def _card(r):
         debt_sub = f"{d.period_end or d.period_label} {d.basis}"
         if d.lease is not None:
             debt_sub += f" / リース別 {report.fmt(report.yen_to_million(d.lease_yen))}"
-    metrics = "".join([
-        _metric("株価", v[2], "円", price_sub),
-        _metric("時価総額", v[3], "億円"),
-        _metric("PSR(実績)", v[4], "倍", psr_f),
-        _metric("自己資本比率", v[6], "%", eq_sub),
-        _metric("営業CF", v[7], "百万円", cf_sub),
-        _metric("有利子負債", v[8], "百万円", debt_sub),
-    ])
+    if k and k.source == "EDINET":
+        # スマホ版(EDINET だけ): 株価・時価総額・PSR の代わりに売上高を出す
+        sales = report.fmt(k.sales_actual.value) if k.sales_actual else "－"
+        metrics = "".join([
+            _metric("売上高", sales, "百万円", k.sales_actual.label if k.sales_actual else ""),
+            _metric("自己資本比率", v[6], "%", eq_sub),
+            _metric("営業CF", v[7], "百万円", k.operating_cf.label if k.operating_cf else ""),
+            _metric("有利子負債", v[8], "百万円", debt_sub),
+        ])
+    else:
+        metrics = "".join([
+            _metric("株価", v[2], "円", price_sub),
+            _metric("時価総額", v[3], "億円"),
+            _metric("PSR(実績)", v[4], "倍", psr_f),
+            _metric("自己資本比率", v[6], "%", eq_sub),
+            _metric("営業CF", v[7], "百万円", cf_sub),
+            _metric("有利子負債", v[8], "百万円", debt_sub),
+        ])
     st = _STATUS_CLASS.get(r.status, "warn")
     return (f'<section class="card"><header><h2>{_e(title)}{market}</h2>'
             f'<span class="st {st}">{_e(r.status)}</span></header>'
@@ -106,13 +116,10 @@ def render_page(results, updated_at, notes=()):
 <title>銘柄情報</title><style>{CSS}</style></head>
 <body><div class="wrap">
 <h1>銘柄情報</h1>
-<div class="upd">更新: {_e(updated_at)}(株価の日付は各銘柄に表示)</div>
+<div class="upd">更新: {_e(updated_at)}(数字の時点は各銘柄に表示)</div>
 <div class="cards">{cards}</div>
 <div class="note">{extra}
-<p>出典: 株探 または IR BANK(株価・時価総額・売上高・自己資本比率・営業CF。各銘柄の「くわしく」に表示)。有利子負債は、金融庁 EDINET または
-IR BANK の貸借対照表の借入金・社債・CP を足したもの(リース債務は含まない)。
-PSR = 時価総額 ÷ 売上高。貸借対照表が取れなかった会社は、株探の有利子負債倍率 × 自己資本 で
-概算しています(「約」付き)。どちらも無い会社は「－」です。</p>
+<p>出典・時点は各銘柄の「くわしく」に表示しています。有利子負債は、貸借対照表の借入金・社債・CP を足したもの(リース債務は含まない)です。スマホ版は金融庁 EDINET の最新の有価証券報告書・半期報告書から作っているため、株価・時価総額・PSR はありません。</p>
 <p>数値は確認の補助です。投資の判断は元の資料(決算短信・有価証券報告書)で確かめてください。</p>
 </div></div></body></html>
 """
