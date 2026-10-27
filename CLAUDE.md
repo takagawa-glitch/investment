@@ -37,6 +37,8 @@ investment/
 - `compute_summary` の読み方を変えたら `SUMMARY_VERSION` を上げる(保存した古い結果を使わない)。経営指標の「連結・個別」列は「その他」になるので、コンテキストIDの NonConsolidatedMember で見分ける。
 - `--source irbank`(IR BANK から株価・業績)も残してあるが、GitHub からは使えない。PC で試すとき用。
 - `.github/workflows/update.yml`: 平日 12:05・15:50 JST、`銘柄リスト.txt` 等の push、手動実行で動き、Pages に公開。
+- スマホのブラウザから EDINET を直接見に行く作りはできない(EDINET が CORS を許可していない。キーをページに入れると誰でも見られる)。代わりに、ページの「＋ 銘柄を追加・削除」→ GitHub の Run workflow(入力欄 add/remove)→ `build_site.update_list` で `銘柄リスト.txt` を更新・コミット(github-actions[bot])→ ページを作り直す。入力は環境変数で渡し、コードの形か1社に決まる社名だけを受け付ける。
+- ページの絞り込み欄は外部ファイルなしの小さな JavaScript(`web.JS`)。入力した文字は localStorage に記憶(使えなくても動く)。
 - APIキーは GitHub の Secrets `EDINET_API_KEY`。キャッシュは `MEIGARA_DATA_DIR` を actions/cache で引き継ぐ。
 - 1回の上限は50銘柄(`MAX_STOCKS`)。株探への負担を増やす変更(回数・銘柄数を増やす)はユーザーに確認する。
 - ページには noindex を付けるが、URL を知っていれば誰でも見られる。公開リポジトリなので、処理記録・ログ・キー・キャッシュは `.gitignore`(許可リスト方式)で除外している。

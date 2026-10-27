@@ -1,6 +1,7 @@
 # 銘柄情報のページを作り直して GitHub Pages に公開する。
 # 動くとき: 平日 12:05 と 15:50(日本時間。GitHub の都合で数分〜数十分遅れることがある)、
-#           銘柄リスト.txt を書き換えたとき、Actions の画面で「Run workflow」を押したとき。
+#           銘柄リスト.txt を書き換えたとき、
+#           Actions の画面で「Run workflow」を押したとき(銘柄の追加・削除を入力できる)。
 name: 銘柄情報を更新
 
 on:
@@ -11,6 +12,15 @@ on:
     branches: [main]
     paths: ["銘柄リスト.txt", "meigara/**", "build_site.py", ".github/workflows/update.yml"]
   workflow_dispatch:
+    inputs:
+      add:
+        description: "追加する銘柄(銘柄コードか社名。複数は空白区切り。例: 554A 7203)"
+        required: false
+        default: ""
+      remove:
+        description: "外す銘柄(銘柄コード。複数は空白区切り)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -25,10 +35,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: write   # 銘柄リスト.txt の追加・削除を保存するため
     env:
       TZ: Asia/Tokyo
       MEIGARA_DATA_DIR: ${{ github.workspace }}/.meigara-data
       EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
+      # 入力された文字はコマンドに直接埋め込まず、環境変数で渡す(build_site.py で確かめる)
+      ADD_STOCKS: ${{ github.event.inputs.add }}
+      REMOVE_STOCKS: ${{ github.event.inputs.remove }}
+      MANAGE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/update.yml
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +61,19 @@ jobs:
 
       - name: ページを作る
         # 株探(405)・IR BANK(403)は GitHub からの取得を拒否するため、EDINET だけで作る(株価なし)
-        run: python build_site.py --list 銘柄リスト.txt --out site --source edinet
+        run: >
+          python build_site.py --list 銘柄リスト.txt --out site --source edinet
+          --add "$ADD_STOCKS" --remove "$REMOVE_STOCKS" --manage-url "$MANAGE_URL"
+
+      - name: 銘柄リストの変更を保存する
+        run: |
+          if ! git diff --quiet -- 銘柄リスト.txt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add 銘柄リスト.txt
+            git commit -m "銘柄リストを更新(画面から追加・削除)"
+            git push
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         with:

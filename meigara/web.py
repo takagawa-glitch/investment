@@ -70,7 +70,8 @@ def _card(r):
     if r.code and re.fullmatch(r"[0-9][0-9A-Z]{3}", r.code):
         link = (f'<a class="lk" href="https://kabutan.jp/stock/?code={_e(r.code)}" '
                 f'target="_blank" rel="noopener">株価・時価総額を見る(株探) ›</a>')
-    return (f'<section class="card"><header><h2>{_e(title)}{market}</h2>'
+    key = f"{r.code} {r.name} {r.query}".upper()
+    return (f'<section class="card" data-key="{_e(key)}"><header><h2>{_e(title)}{market}</h2>'
             f'<span class="st {st}">{_e(r.status)}</span></header>'
             f'{link}<div class="grid">{metrics}</div>'
             f'<details><summary>くわしく(出典・計算方法・注意)</summary>'
@@ -109,13 +110,51 @@ summary{cursor:pointer;color:var(--acc);font-size:.85rem}
 .lk{display:inline-block;margin-top:6px;color:var(--acc);font-size:.85rem;text-decoration:none;padding:4px 0}
 pre{white-space:pre-wrap;word-break:break-all;font-size:.78rem;margin:8px 0 0;font-family:inherit}
 .note{color:var(--sub);font-size:.78rem;margin-top:16px}
+.bar{display:flex;gap:8px;margin:4px 0 6px}
+.bar input{flex:1;min-width:0;font-size:16px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;
+background:var(--card);color:var(--fg)}
+.bar button{font-size:.9rem;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+.bar2{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:.8rem;color:var(--sub)}
+.btn{background:var(--acc);color:#fff;text-decoration:none;padding:7px 12px;border-radius:999px;font-size:.85rem}
+@media (prefers-color-scheme:dark){.btn{color:#111}}
+.info{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:4px 12px;margin:6px 0 10px;font-size:.85rem}
+.info p{margin:6px 0}
 """
 
 
-def render_page(results, updated_at, notes=()):
-    """results: StockResult の一覧、updated_at: 表示用の更新日時(文字)"""
+# 絞り込み(入力した文字をコード・社名に含む銘柄だけ表示)。外部のファイルは読み込まない。
+# 最後に入れた文字はこのスマホにだけ覚えておく(使えない環境でも動くよう try で囲む)。
+JS = r"""
+(function(){
+  var box=document.getElementById('q'), cards=[].slice.call(document.querySelectorAll('.card')),
+      cnt=document.getElementById('cnt');
+  function norm(s){return (s||'').normalize('NFKC').toUpperCase().trim();}
+  function apply(){
+    var words=norm(box.value).split(/[\s,、]+/).filter(Boolean), n=0;
+    cards.forEach(function(c){
+      var k=norm(c.getAttribute('data-key'));
+      var show=!words.length||words.some(function(w){return k.indexOf(w)>=0;});
+      c.style.display=show?'':'none'; if(show)n++;
+    });
+    cnt.textContent=n+' / '+cards.length+' 銘柄';
+    try{localStorage.setItem('meigara_q',box.value);}catch(e){}
+  }
+  try{box.value=localStorage.getItem('meigara_q')||'';}catch(e){}
+  box.addEventListener('input',apply);
+  document.getElementById('clr').addEventListener('click',function(){box.value='';apply();box.focus();});
+  apply();
+})();
+"""
+
+
+def render_page(results, updated_at, notes=(), manage_url=""):
+    """results: StockResult の一覧、updated_at: 表示用の更新日時(文字)
+    manage_url: 「銘柄を追加・削除」ボタンの行き先(GitHub の Run workflow の画面)"""
     cards = "".join(_card(r) for r in results) or "<p>銘柄リストが空です。</p>"
-    extra = "".join(f"<p>{_e(n)}</p>" for n in notes)
+    info = ('<div class="info">' + "".join(f"<p>{_e(n)}</p>" for n in notes) + "</div>") if notes else ""
+    manage = ""
+    if manage_url:
+        manage = (f'<a class="btn" href="{_e(manage_url)}" target="_blank" rel="noopener">＋ 銘柄を追加・削除</a>')
     return f"""<!doctype html>
 <html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -124,9 +163,15 @@ def render_page(results, updated_at, notes=()):
 <body><div class="wrap">
 <h1>銘柄情報</h1>
 <div class="upd">更新: {_e(updated_at)}(数字の時点は各銘柄に表示)</div>
+{info}
+<div class="bar">
+<input id="q" type="search" placeholder="コード・社名で絞り込み" autocomplete="off">
+<button id="clr" type="button">全部</button>
+</div>
+<div class="bar2"><span id="cnt"></span>{manage}</div>
 <div class="cards">{cards}</div>
-<div class="note">{extra}
+<div class="note">
 <p>出典・時点は各銘柄の「くわしく」に表示しています。有利子負債は、貸借対照表の借入金・社債・CP を足したもの(リース債務は含まない)です。スマホ版は金融庁 EDINET の最新の有価証券報告書・半期報告書から作っているため、株価・時価総額・PSR はありません。</p>
 <p>数値は確認の補助です。投資の判断は元の資料(決算短信・有価証券報告書)で確かめてください。</p>
-</div></div></body></html>
+</div></div><script>{JS}</script></body></html>
 """

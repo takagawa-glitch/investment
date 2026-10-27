@@ -370,8 +370,14 @@ class TestWeb(unittest.TestCase):
         self.assertNotIn("テスト<工業>", page)
         self.assertIn("2.47", page)
         self.assertIn('class="st ng"', page)
-        self.assertIn("注意のテスト", page)
-        self.assertNotIn("<script", page)           # 外部・スクリプトを読み込まない
+        self.assertIn('<div class="info"><p>注意のテスト</p>', page)
+        self.assertNotIn("<script src", page)       # 外部のスクリプトを読み込まない
+        self.assertNotIn("<link", page)
+        self.assertIn('data-key="9999 テスト<工業>'.replace("<", "&lt;").replace(">", "&gt;"), page)
+        self.assertIn('id="q"', page)                 # 絞り込み欄
+        self.assertNotIn("銘柄を追加・削除", page)    # 行き先が無ければボタンは出さない
+        page2 = web.render_page([r], "2026-10-27 15:50", manage_url="https://example.com/run")
+        self.assertIn('href="https://example.com/run"', page2)
 
     def test_read_list(self):
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -677,6 +683,42 @@ class TestEdinetSummary(unittest.TestCase):
         r = service.get_stock("9999", book, None, source="edinet")
         self.assertEqual(r.status, "失敗")
         self.assertTrue(any("APIキー" in n for n in r.notes))
+
+
+
+class TestUpdateList(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        import build_site
+        self.bs = build_site
+        self.book = codes.CodeBook(codes.parse_codelist(CODELIST))
+
+    def test_add_remove(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp, "list.txt")
+            p.write_text("# メモ\n9999  # テスト工業\n", encoding="utf-8")
+            changed, notes = self.bs.update_list(p, "サンプル商事 ９９９ａ 9999", "", self.book)
+            self.assertTrue(changed)
+            self.assertEqual(self.bs.read_list(p), ["9999", "8888", "999A"])
+            self.assertIn("# メモ", p.read_text(encoding="utf-8"))      # メモ行は残す
+            changed, notes = self.bs.update_list(p, "", "9999", self.book)
+            self.assertEqual(self.bs.read_list(p), ["8888", "999A"])
+
+    def test_ambiguous_name_not_added(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp, "list.txt")
+            p.write_text("", encoding="utf-8")
+            changed, notes = self.bs.update_list(p, "テスト", "", self.book)
+            self.assertFalse(changed)
+            self.assertIn("候補が2件", notes[0])
+
+    def test_no_injection(self):
+        # 変な文字は銘柄として扱わない(コードの形でも1社に決まる社名でもないものは入れない)
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp, "list.txt")
+            p.write_text("", encoding="utf-8")
+            changed, _ = self.bs.update_list(p, "$(rm -rf /) ;echo", "", self.book)
+            self.assertFalse(changed)
 
 
 if __name__ == "__main__":
