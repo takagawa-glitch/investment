@@ -31,6 +31,8 @@ def _card(r):
     title = f"{r.code} {r.name}".strip() or r.query
     market = f'<span class="mk">{_e(k.market)}</span>' if k and k.market else ""
     price_sub = k.price_time[5:16].replace("T", " ").replace("-", "/") if k and k.price_time else ""
+    if k and k.price_note == "終値":
+        price_sub += " 終値"
     psr_f = f"予想 {v[5]}倍" if v[5] != "－" else ""
     eq_sub = k.equity_ratio.label if k and k.equity_ratio else ""
     cf_sub = f"{k.operating_cf.label}期" if k and k.operating_cf else ""
@@ -104,10 +106,10 @@ def render_page(results, updated_at, notes=()):
 <title>銘柄情報</title><style>{CSS}</style></head>
 <body><div class="wrap">
 <h1>銘柄情報</h1>
-<div class="upd">更新: {_e(updated_at)}(株価は取得時点の15分遅れ)</div>
+<div class="upd">更新: {_e(updated_at)}(株価の日付は各銘柄に表示)</div>
 <div class="cards">{cards}</div>
 <div class="note">{extra}
-<p>出典: 株探(株価・時価総額・売上高・自己資本比率・営業CF)。有利子負債は、金融庁 EDINET または
+<p>出典: 株探 または IR BANK(株価・時価総額・売上高・自己資本比率・営業CF。各銘柄の「くわしく」に表示)。有利子負債は、金融庁 EDINET または
 IR BANK の貸借対照表の借入金・社債・CP を足したもの(リース債務は含まない)。
 PSR = 時価総額 ÷ 売上高。貸借対照表が取れなかった会社は、株探の有利子負債倍率 × 自己資本 で
 概算しています(「約」付き)。どちらも無い会社は「－」です。</p>

@@ -46,7 +46,8 @@ def resolve(query, book):
     return None, None, found, f"候補が{len(found)}件あります。銘柄コードで入力し直してください"
 
 
-def get_stock(query, book, api_key, progress=None, cancelled=None) -> StockResult:
+def get_stock(query, book, api_key, progress=None, cancelled=None, source="kabutan") -> StockResult:
+    """source: 株価・業績の取得元。"kabutan"(PC。株探)/"irbank"(GitHub。株探が使えないため)"""
     res = StockResult(query=query)
     company, code, cands, msg = resolve(query, book)
     if code is None:
@@ -56,12 +57,28 @@ def get_stock(query, book, api_key, progress=None, cancelled=None) -> StockResul
         return res
     res.code = code
     res.name = company.name if company else ""
+    edinet_code = company.edinet_code if company else ""
+    list_html = None   # IR BANK の財務状況ページ(取得済みなら有利子負債で使い回す)
 
-    # 株探
-    if progress:
-        progress(f"{code}: 株探から取得しています")
-    try:
-        k = kabutan.fetch(code)
+    k = None
+    if source == "irbank":
+        try:
+            k, list_html = irbank.fetch_market(
+                code, edinet_code, res.name,
+                progress=(lambda s: progress(f"{code}: {s}")) if progress else None)
+            if k.price is None and k.sales_actual is None and k.equity_ratio is None:
+                res.notes.extend(k.warnings)
+                k = None
+        except net.FetchError as e:
+            res.notes.append(f"IR BANK: {e}")
+    else:
+        if progress:
+            progress(f"{code}: 株探から取得しています")
+        try:
+            k = kabutan.fetch(code)
+        except (kabutan.KabutanError, net.FetchError) as e:
+            res.notes.append(f"株探: {e}")
+    if k is not None:
         res.kabutan = k
         res.name = k.name or res.name
         res.notes.extend(k.warnings)
@@ -69,8 +86,6 @@ def get_stock(query, book, api_key, progress=None, cancelled=None) -> StockResul
             res.psr_actual = calc_psr(k.market_cap, k.sales_actual.value)
         if k.sales_forecast:
             res.psr_forecast = calc_psr(k.market_cap, k.sales_forecast.value)
-    except (kabutan.KabutanError, net.FetchError) as e:
-        res.notes.append(f"株探: {e}")
 
     # 有利子負債: 分かる場合だけ出す。
     #   APIキーがあれば EDINET の正確な値、無ければ株探の倍率からの概算、どちらも無ければ「－」。
@@ -78,7 +93,6 @@ def get_stock(query, book, api_key, progress=None, cancelled=None) -> StockResul
     #   順番: EDINET(APIキーがあるとき)→ IR BANK の貸借対照表を足し算 → 株探の倍率から概算 → 「－」
     if cancelled and cancelled():
         raise edinet.Cancelled()
-    edinet_code = company.edinet_code if company else ""
     if api_key and edinet_code:
         try:
             doc = edinet.find_latest_report(
@@ -99,7 +113,8 @@ def get_stock(query, book, api_key, progress=None, cancelled=None) -> StockResul
             raise edinet.Cancelled()
         try:
             res.debt = irbank.fetch_debt(
-                edinet_code, progress=(lambda s: progress(f"{code}: {s}")) if progress else None)
+                edinet_code, progress=(lambda s: progress(f"{code}: {s}")) if progress else None,
+                list_html=list_html)
             res.notes.extend("有利子負債: " + n for n in res.debt.notes)
         except (irbank.IrbankError, net.FetchError) as e:
             res.notes.append(f"有利子負債: {e}")

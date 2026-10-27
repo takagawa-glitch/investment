@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from meigara import codes, edinet, service, web  # noqa: E402
 
-MAX_STOCKS = 50   # 1回に取得する上限(株探に負担をかけないため。3秒間隔で約2.5分)
+MAX_STOCKS = 50   # 1回に取得する上限(相手のサイトに負担をかけないため。IR BANK は1銘柄4ページ・3秒間隔)
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 
@@ -33,6 +33,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="銘柄情報のページを作る")
     ap.add_argument("--list", default="銘柄リスト.txt", help="銘柄リストのファイル")
     ap.add_argument("--out", default="site", help="ページを書き出すフォルダ")
+    ap.add_argument("--source", default="kabutan", choices=["kabutan", "irbank"],
+                    help="株価・業績の取得元(GitHub では株探が使えないため irbank)")
     args = ap.parse_args(argv)
 
     queries = read_list(args.list)
@@ -49,7 +51,7 @@ def main(argv=None):
     results = []
     for q in queries:
         try:
-            r = service.get_stock(q, book, key)
+            r = service.get_stock(q, book, key, source=args.source)
         except Exception as e:   # 1銘柄の失敗でページ全体を止めない
             r = service.StockResult(query=q, status="失敗",
                                     notes=[f"予期しないエラー({type(e).__name__})"])

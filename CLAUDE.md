@@ -32,6 +32,7 @@ investment/
 
 - リポジトリ: https://github.com/takagawa-glitch/investment (**公開**。ユーザーが公開でよいと判断 2026-10-27)
 - `build_site.py` が `銘柄リスト.txt` を読み、`site/index.html`(`meigara/web.py`)を作る。
+- **株探は GitHub のサーバーからの取得を拒否する(応答コード 405。2026-10-27 確認)。** 拒否をすり抜ける工夫はしない(規約の「運営を妨げる行為」に当たるおそれ)。GitHub では `--source irbank` で、株価・業績を IR BANK から取る(`irbank.fetch_market`: 銘柄ページ・財務状況・業績・CF の4ページ。財務状況ページは有利子負債でも使い回す)。株価は終値、売上高・CF は概数。PC 版は株探のまま。
 - `.github/workflows/update.yml`: 平日 12:05・15:50 JST、`銘柄リスト.txt` 等の push、手動実行で動き、Pages に公開。
 - APIキーは GitHub の Secrets `EDINET_API_KEY`。キャッシュは `MEIGARA_DATA_DIR` を actions/cache で引き継ぐ。
 - 1回の上限は50銘柄(`MAX_STOCKS`)。株探への負担を増やす変更(回数・銘柄数を増やす)はユーザーに確認する。

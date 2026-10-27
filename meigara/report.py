@@ -25,6 +25,8 @@ def fmt(v, digits=None):
     v = Decimal(v)
     if digits is not None:
         v = v.quantize(Decimal(1).scaleb(-digits), ROUND_HALF_UP)
+    elif v == v.to_integral_value():
+        v = v.quantize(Decimal(1))   # 「2,450.0」「3,080,000.00」のような余分な小数を出さない
     s = f"{v:,f}"
     return s
 
@@ -77,8 +79,8 @@ def detail_text(r):
     lines.append(f"■ {title}  結果: {r.status}")
 
     if k:
-        lines.append(f"株価: {fmt(k.price)}円({_time_text(k.price_time)} 時点・15分遅れ/株探)")
-        lines.append(f"時価総額: {fmt(k.market_cap)}億円(株探)")
+        lines.append(f"株価: {fmt(k.price)}円({_time_text(k.price_time)} 時点・{k.price_note}/{k.source})")
+        lines.append(f"時価総額: {fmt(k.market_cap)}億円({k.source})")
         for label, psr, sales in (("実績", r.psr_actual, k.sales_actual),
                                   ("予想", r.psr_forecast, k.sales_forecast)):
             if psr is not None:
@@ -87,7 +89,7 @@ def detail_text(r):
             else:
                 lines.append(f"PSR({label}): 計算できません(売上高が取得できません)")
         if k.equity_ratio:
-            s = f"自己資本比率: {fmt(k.equity_ratio.value)}%({k.equity_ratio.label} 時点/株探)"
+            s = f"自己資本比率: {fmt(k.equity_ratio.value)}%({k.equity_ratio.label} 時点/{k.source})"
             a = k.equity_ratio_annual
             if a and a.label != k.equity_ratio.label:
                 s += f"  通期 {a.label}: {fmt(a.value)}%"
@@ -95,7 +97,7 @@ def detail_text(r):
         else:
             lines.append("自己資本比率: 取得できません")
         if k.operating_cf:
-            lines.append(f"営業CF: {fmt(k.operating_cf.value)}百万円({k.operating_cf.label}期 通期/株探)")
+            lines.append(f"営業CF: {fmt(k.operating_cf.value)}百万円({k.operating_cf.label}期 通期/{k.source})")
         else:
             lines.append("営業CF: 取得できません")
         if not r.debt:
@@ -104,7 +106,7 @@ def detail_text(r):
                              f"{fmt(k.debt_ratio.value)}倍 × 自己資本 {fmt(k.debt_equity.value)}百万円、"
                              f"{k.debt_estimate.label} 時点/株探)")
             else:
-                lines.append("有利子負債: 不明(株探に有利子負債倍率が載っていません)")
+                lines.append("有利子負債: 不明")
 
     d = r.debt
     if d:

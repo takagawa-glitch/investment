@@ -323,7 +323,7 @@ class TestStatus(unittest.TestCase):
         self.irbank = irbank
 
     def _run(self, k, irbank_result):
-        def fake_irbank(code, progress=None):
+        def fake_irbank(code, progress=None, list_html=None):
             if isinstance(irbank_result, Exception):
                 raise irbank_result
             return irbank_result
@@ -505,6 +505,121 @@ class TestIrbank(unittest.TestCase):
                 d2 = irbank.fetch_debt("E99991")
             self.assertEqual(calls, ["E99991/bs"])
             self.assertEqual(d2.total, d.total)
+
+
+
+# ------------------------------------------------------------ IR BANK の株価・業績(GitHub 版。架空)
+
+QUOTE_HTML = (
+    '<div>9999 テスト工業 9999 2026/10/26 時価 123億円</div>'
+    '<h2 id="c_Price">株価<span class="co_sm">（10/26）</span></h2><dl class="gdl">'
+    '<dt>前日終値<span class="co_sm"> (10/23)</span></dt><dd><span class="text">2,300</span></dd>'
+    '<dt>終値<span class="co_br">&thinsp;-1.24%</span></dt><dd><span class="dwn"></span><span class="text">2,345</span></dd></dl>'
+    '<h2 id="c_Valuation">株式指標</h2><dl class="gdl"><dt>時価総額</dt><dd><span class="ratio"></span>'
+    '<span class="text">123億4567万</span></dd></dl>')
+
+LIST_HTML = (
+    '<table class="cs"><caption>財務履歴（百万円）</caption><thead><tr><th>年度</th><th>総資産</th>'
+    '<th class="lf">自己資本比率</th></tr></thead><tbody>'
+    '<tr><td class="lf weaken">2025/03</td><td class="rt">1,000</td><td class="rt">40.0%</td></tr>'
+    '<tr><td class="lf weaken"><a title="9999 テスト工業 | 貸借対照表 - 有価証券報告書-第2期 - 2026年6月1日提出" href="S100AAA/bs">2026/03</a></td><td class="rt">1,100</td><td class="rt">45.6%</td></tr>'
+    '<tr><td class="lf weaken"><a title="9999 テスト工業 | 貸借対照表 - 第1四半期決算短信 - 2026年8月1日提出" href="0812BBB/bs">2026/06</a></td><td class="rt">1,200</td><td class="rt">47.1%</td></tr>'
+    '</tbody></table>')
+
+RESULTS_HTML = (
+    '<table class="bar bs"><thead><tr><th>年度</th><th><a>売上</a></th><th>営利</th></tr></thead><tbody>'
+    '<tr><td>2025/03</td><td class="rt"><span class="text">40億</span></td><td>-</td></tr>'
+    '<tr><td><a href="x">2026/03</a></td><td class="rt"><span class="text">50億</span></td><td>-</td></tr>'
+    '<tr><td><a href="y">2027/03</a><span class="co_gr weaken">予</span></td><td class="rt"><span class="text">61.7億</span></td><td>-</td></tr>'
+    '</tbody></table>')
+
+CF_HTML = (
+    '<table class="cs"><caption>キャッシュ・フロー計算書 (百万円)</caption><thead><tr><th>年度</th><th>四半期</th>'
+    '<th class="lf">営業CF</th><th class="lf">投資CF</th></tr></thead><tbody>'
+    '<tr><td class="lf weaken" rowspan="1">2025年<br>3月期<br>連結</td><td class="lf weaken">通期</td>'
+    '<td class="rt odd">-120</td><td class="rt odd">-5</td></tr>'
+    '<tr><td class="lf weaken" rowspan="2">2026年<br>3月期<br>連結</td><td class="lf weaken"><a>2Q</a></td>'
+    '<td class="rt odd">400</td><td class="rt odd">-3</td></tr>'
+    '<td class="lf weaken"><a>通期</a></td><td class="rt odd">850</td><td class="rt odd">-7</td></tr>'
+    '</tbody></table>')
+
+
+class TestIrbankMarket(unittest.TestCase):
+    def setUp(self):
+        from meigara import irbank
+        self.irbank = irbank
+
+    def test_amount(self):
+        f = self.irbank.parse_amount_million
+        self.assertEqual(f("56億6119万"), Decimal("5661.19"))
+        self.assertEqual(f("20億"), Decimal("2000"))
+        self.assertEqual(f("364百万"), Decimal("364"))
+        self.assertEqual(f("-57百万"), Decimal("-57"))
+        self.assertEqual(f("4兆2381億"), Decimal("4238100"))
+        self.assertEqual(f("1,234"), Decimal("1234"))
+        self.assertIsNone(f("-"))
+        self.assertIsNone(f("赤字"))
+
+    def test_quote(self):
+        price, date, cap = self.irbank.parse_quote_page(QUOTE_HTML)
+        self.assertEqual((price, date, cap), (Decimal("2345"), "2026-10-26", Decimal("123.5")))
+
+    def test_tables(self):
+        self.assertEqual(self.irbank.parse_equity_ratio(LIST_HTML)[-1], ("2026/06", Decimal("47.1")))
+        self.assertEqual(self.irbank.parse_sales(RESULTS_HTML),
+                         [("2025/03", Decimal("4000"), False), ("2026/03", Decimal("5000"), False),
+                          ("2027/03", Decimal("6170"), True)])
+        self.assertEqual(self.irbank.parse_operating_cf(CF_HTML),
+                         [("2025/03", Decimal("-120")), ("2026/03", Decimal("850"))])
+
+    def test_cf_oku_unit(self):
+        # 大きな会社は単位が億円になる → 百万円にそろえる
+        html = CF_HTML.replace('<caption>キャッシュ・フロー計算書 (百万円)</caption>',
+                               '<caption class="em100">キャッシュ・フロー計算書 (億円)<ul><li>もっとみる</li></ul></caption>')
+        self.assertEqual(self.irbank.parse_operating_cf(html)[-1], ("2026/03", Decimal("85000")))
+
+    def test_fmt_no_extra_zeros(self):
+        self.assertEqual(report.fmt(Decimal("3080000.00")), "3,080,000")
+        self.assertEqual(report.fmt(Decimal("56.6")), "56.6")
+
+    def test_fetch_market(self):
+        pages = {"9999": QUOTE_HTML, "E99991/bs": LIST_HTML, "E99991/results": RESULTS_HTML,
+                 "E99991/cf": CF_HTML}
+        with mock.patch.object(self.irbank, "_get", lambda p, retries=2: pages[p]):
+            d, list_html = self.irbank.fetch_market("9999", "E99991", "テスト工業株式会社")
+        self.assertEqual(list_html, LIST_HTML)
+        self.assertEqual((d.source, d.price_note, d.price), ("IR BANK", "終値", Decimal("2345")))
+        self.assertEqual(d.sales_actual.value, Decimal("5000"))
+        self.assertEqual(d.sales_forecast.value, Decimal("6170"))
+        self.assertEqual((d.equity_ratio.label, d.equity_ratio_annual.label), ("2026/06", "2026/03"))
+        self.assertEqual(d.operating_cf.value, Decimal("850"))
+        self.assertEqual(d.warnings, [])
+        # PSR は 123.5億円 ÷ 5,000百万円 = 2.47
+        self.assertEqual(service.calc_psr(d.market_cap, d.sales_actual.value), Decimal("2.47"))
+        text = report.detail_text(service.StockResult(query="9999", code="9999", kabutan=d))
+        self.assertIn("2026-10-26 時点・終値/IR BANK", text)
+
+    def test_service_irbank_reuses_list_page(self):
+        book = codes.CodeBook(codes.parse_codelist(CODELIST))
+        pages = {"9999": QUOTE_HTML, "E99991/bs": LIST_HTML, "E99991/results": RESULTS_HTML,
+                 "E99991/cf": CF_HTML, "E99991/0812BBB/bs": irbank_bs_html()}
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp,                 mock.patch.dict(os.environ, {"MEIGARA_DATA_DIR": tmp}),                 mock.patch.object(self.irbank, "_get", lambda p, retries=2: calls.append(p) or pages[p]):
+            r = service.get_stock("9999", book, None, source="irbank")
+        self.assertEqual(r.status, "成功")
+        self.assertEqual(report.debt_cell(r), "350")
+        self.assertEqual(calls.count("E99991/bs"), 1)   # 財務状況ページは1回だけ
+
+    def test_service_irbank_all_failed(self):
+        from meigara import net
+        book = codes.CodeBook(codes.parse_codelist(CODELIST))
+
+        def boom(p, retries=2):
+            raise net.FetchError("IR BANKから取得できませんでした(応答コード 403)", status=403)
+        with tempfile.TemporaryDirectory() as tmp,                 mock.patch.dict(os.environ, {"MEIGARA_DATA_DIR": tmp}),                 mock.patch.object(self.irbank, "_get", boom):
+            r = service.get_stock("9999", book, None, source="irbank")
+        self.assertEqual(r.status, "失敗")
+        self.assertTrue(any("403" in n for n in r.notes))
 
 
 if __name__ == "__main__":

@@ -54,6 +54,8 @@ class KabutanData:
     debt_equity: Period = None     # 百万円(その行の自己資本)
     debt_estimate: Period = None   # 百万円(概算)
     warnings: list = field(default_factory=list)
+    source: str = "株探"           # 取得元(GitHub 版は IR BANK)
+    price_note: str = "15分遅れ"   # 株価の種類(IR BANK は「終値」)
 
 
 # ------------------------------------------------------------ HTML の読み取り

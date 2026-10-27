@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       TZ: Asia/Tokyo
       MEIGARA_DATA_DIR: ${{ github.workspace }}/.meigara-data
@@ -44,7 +44,8 @@ jobs:
           restore-keys: meigara-data-
 
       - name: ページを作る
-        run: python build_site.py --list 銘柄リスト.txt --out site
+        # 株探は GitHub からの取得を拒否する(405)ため、株価・業績は IR BANK から取る
+        run: python build_site.py --list 銘柄リスト.txt --out site --source irbank
 
       - uses: actions/upload-pages-artifact@v3
         with:
