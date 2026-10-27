@@ -1,0 +1,24 @@
+# 許可リスト方式: まず全部を除外し、公開してよいものだけを入れる。
+# 公開リポジトリなので、処理記録・ログ・APIキー・キャッシュは絶対に入れない。
+*
+!*/
+!.gitignore
+!CLAUDE.md
+!README.md
+!銘柄情報取得.pyw
+!build_site.py
+!銘柄リスト.txt
+!meigara/*.py
+!tests/*.py
+!.github/workflows/*.yml
+
+# 上で許可した場所でも除外するもの
+__pycache__/
+処理記録/
+ログ/
+site/
+.meigara-data/
+*.log
+*.env
+.env*
+*api_key*

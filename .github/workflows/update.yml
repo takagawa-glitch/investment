@@ -1,0 +1,61 @@
+# 銘柄情報のページを作り直して GitHub Pages に公開する。
+# 動くとき: 平日 12:05 と 15:50(日本時間。GitHub の都合で数分〜数十分遅れることがある)、
+#           銘柄リスト.txt を書き換えたとき、Actions の画面で「Run workflow」を押したとき。
+name: 銘柄情報を更新
+
+on:
+  schedule:
+    - cron: "5 3 * * 1-5"    # 12:05 JST
+    - cron: "50 6 * * 1-5"   # 15:50 JST
+  push:
+    branches: [main]
+    paths: ["銘柄リスト.txt", "meigara/**", "build_site.py", ".github/workflows/update.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Tokyo
+      MEIGARA_DATA_DIR: ${{ github.workspace }}/.meigara-data
+      EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # EDINET の書類一覧などを次回に引き継ぐ(毎回さかのぼって探さずに済む)
+      - uses: actions/cache@v4
+        with:
+          path: .meigara-data
+          key: meigara-data-${{ github.run_id }}
+          restore-keys: meigara-data-
+
+      - name: ページを作る
+        run: python build_site.py --list 銘柄リスト.txt --out site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
