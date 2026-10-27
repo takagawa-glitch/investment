@@ -669,6 +669,7 @@ class TestEdinetSummary(unittest.TestCase):
         page = web.render_page([r], "2026-10-27 15:50")
         self.assertIn("売上高", page)
         self.assertNotIn(">株価<", page)
+        self.assertIn('href="https://kabutan.jp/stock/?code=9999"', page)
         self.assertIn("スマホ版では取得していません", report.detail_text(r))
 
     def test_service_edinet_no_key(self):

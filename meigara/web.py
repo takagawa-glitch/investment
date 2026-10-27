@@ -6,6 +6,7 @@
 """
 
 import html
+import re
 
 from . import report
 
@@ -64,9 +65,14 @@ def _card(r):
             _metric("有利子負債", v[8], "百万円", debt_sub),
         ])
     st = _STATUS_CLASS.get(r.status, "warn")
+    # スマホで株探の銘柄ページを開くリンク(職員が自分で開くので、自動取得には当たらない)
+    link = ""
+    if r.code and re.fullmatch(r"[0-9][0-9A-Z]{3}", r.code):
+        link = (f'<a class="lk" href="https://kabutan.jp/stock/?code={_e(r.code)}" '
+                f'target="_blank" rel="noopener">株価・時価総額を見る(株探) ›</a>')
     return (f'<section class="card"><header><h2>{_e(title)}{market}</h2>'
             f'<span class="st {st}">{_e(r.status)}</span></header>'
-            f'<div class="grid">{metrics}</div>'
+            f'{link}<div class="grid">{metrics}</div>'
             f'<details><summary>くわしく(出典・計算方法・注意)</summary>'
             f'<pre>{_e(report.detail_text(r))}</pre></details></section>')
 
@@ -100,6 +106,7 @@ html,body{overflow-x:hidden}
 .sub{display:block;font-size:.72rem;color:var(--sub)}
 details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
 summary{cursor:pointer;color:var(--acc);font-size:.85rem}
+.lk{display:inline-block;margin-top:6px;color:var(--acc);font-size:.85rem;text-decoration:none;padding:4px 0}
 pre{white-space:pre-wrap;word-break:break-all;font-size:.78rem;margin:8px 0 0;font-family:inherit}
 .note{color:var(--sub);font-size:.78rem;margin-top:16px}
 """
