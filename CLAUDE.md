@@ -30,6 +30,8 @@ investment/
 
 ## スマホ向けページ(GitHub Pages)
 
+- **2026-10-27 ユーザーの判断で自動更新を停止(PC版だけを使う)。** `update.yml` は手動実行(workflow_dispatch)だけ。理由: GitHub からは株探・IR BANK が使えず、EDINET だけでは最新(四半期・株価)にならないため。再開するときは schedule を戻す。
+
 - リポジトリ: https://github.com/takagawa-glitch/investment (**公開**。ユーザーが公開でよいと判断 2026-10-27)
 - `build_site.py` が `銘柄リスト.txt` を読み、`site/index.html`(`meigara/web.py`)を作る。
 - **株探(405)・IR BANK(403)は GitHub のサーバーからの取得を拒否する(2026-10-27 確認)。** 拒否をすり抜ける工夫はしない(規約の「運営を妨げる行為」に当たるおそれ)。Google 検索結果の自動取得も規約違反なのでしない。

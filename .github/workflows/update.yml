@@ -1,16 +1,9 @@
 # 銘柄情報のページを作り直して GitHub Pages に公開する。
-# 動くとき: 平日 12:05 と 15:50(日本時間。GitHub の都合で数分〜数十分遅れることがある)、
-#           銘柄リスト.txt を書き換えたとき、
-#           Actions の画面で「Run workflow」を押したとき(銘柄の追加・削除を入力できる)。
+# 2026-10-27: ユーザーの判断で自動更新(平日の定時・プッシュ時)を停止。PC版だけを使う。
+# 動くのは、Actions の画面で「Run workflow」を押したときだけ。
 name: 銘柄情報を更新
 
 on:
-  schedule:
-    - cron: "5 3 * * 1-5"    # 12:05 JST
-    - cron: "50 6 * * 1-5"   # 15:50 JST
-  push:
-    branches: [main]
-    paths: ["銘柄リスト.txt", "meigara/**", "build_site.py", ".github/workflows/update.yml"]
   workflow_dispatch:
     inputs:
       add:
